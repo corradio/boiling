@@ -7,6 +7,9 @@ import numpy as np
 from numpy import linalg
 from plot import plot_simulation
 
+#theano.test()
+#sdfgsdfgdsfg
+
 N = 250
 R = 0.05
 
@@ -47,10 +50,10 @@ Tspan = np.arange(t0, tend, DELTA_T)
 print 'Running %s steps from t=%s to t=%s' % (len(Tspan), t0, tend)
 
 def velocity_vervet(X_m, dt, GRAVITY):
-    #X_m = T.dmatrix('X_m')
-    #X_p = T.dmatrix('X_p')
-    #dt = T.dscalar('dt')
-    #GRAVITY = T.dscalar('GRAVITY')
+    #X_m = T.fmatrix('X_m')
+    #X_p = T.fmatrix('X_p')
+    #dt = T.fscalar('dt')
+    #GRAVITY = T.fscalar('GRAVITY')
     # X_p = X_m * A + b
     A = T.stacklists([
         [ 1,  0,  0,  0],
@@ -59,16 +62,16 @@ def velocity_vervet(X_m, dt, GRAVITY):
         [ 0, dt,  0,  1]
     ])
     B = T.stacklists([[0, 0.5 * GRAVITY * dt * dt, 0, GRAVITY * dt]]).repeat(X_m.shape[0], axis=0)
-    return T.dot(X_m, A) + B
+    return T.cast(T.dot(X_m, A) + B, 'float32')
 
 ####
 # Compile main_loop
 ####
 #X_0 = theano.shared(x0)
 def get_main_loop(Tspan):
-    X_0 = T.dmatrix('X_0')
-    dt = T.dscalar('dt')
-    GRAVITY = T.dscalar('GRAVITY')
+    X_0 = T.fmatrix('X_0')
+    dt = T.fscalar('dt')
+    GRAVITY = T.fscalar('GRAVITY')
 
     result, updates = theano.scan(fn=velocity_vervet,
                                   outputs_info=X_0, # Output shape
@@ -190,7 +193,7 @@ def distance(i, j, X):
     return linalg.norm(dx)
 
 def simulate(x0, T):
-    r = T.dmatrix('r')
+    r = T.fmatrix('r')
 
     r = [x0] # TODO: Pre-allocate
 
