@@ -12,7 +12,7 @@ R = 0.05
 
 print 'Creating initial conditions'
 # Normal uniform speeds
-x0 = 7.0 * (np.random.rand(N, 4) - 0.5)
+x0 = 1.0 * (np.random.rand(N, 4) - 0.5)
 # Grid positions
 sqrtNceil = int(np.ceil(np.sqrt(N)))
 for i in range(sqrtNceil):
@@ -22,7 +22,7 @@ for i in range(sqrtNceil):
 
 t0 = 0
 tend = 100
-DELTA_T = 0.001
+DELTA_T = 0.01
 EPS_t = 1e-7
 EPS_dt = 1e-3*0
 EPS = 1e-6#1e-12
@@ -32,9 +32,9 @@ EPS = 1e-6#1e-12
 # TODO: Would a potential-based solution be better? Instead of modelling collisions, have very high potentials?
 #   This requires having very small steps however..
 
-TEMPERATURE_COLD = 2.0
-TEMPERATURE_HOT = 200.0
-GRAVITY = -4.0
+TEMPERATURE_COLD = 1.0
+TEMPERATURE_HOT = 10.0
+GRAVITY = -10.0
 if GRAVITY == 0.0: print 'GRAVITY IS OFF.'
 
 T = np.arange(t0, tend, DELTA_T)
@@ -229,11 +229,11 @@ def simulate(x0, T):
                                     if ii == 0 or ii == 1: x_m[i, 2] *= -1 # right/left
                                     # We use *uniform* distributions here
                                     if ii == 2: # top
-                                        v = np.random.rand(2) # Random vector
+                                        v = np.random.rand(2) - 0.5 # Random vector centered around 0
                                         if v[1] > 0: v[1] = -v[1] # Vy must be negative
                                         x_m[i, 2:4] = v / linalg.norm(v) * TEMPERATURE_COLD # top
                                     if ii == 3: 
-                                        v = np.random.rand(2) # Random vector
+                                        v = np.random.rand(2) - 0.5 # Random vector centered around 0
                                         if v[1] < 0: v[1] = -v[1] # Vy must be negative
                                         x_m[i, 2:4] = v / linalg.norm(v) * TEMPERATURE_HOT # top
                                     #print 'after', x_m[i, :], 'y=%s' % x_m[i, 1], 'vy=%s' % x_m[i, 3]

@@ -27,7 +27,7 @@ def plot_simulation(r, interval=1):
     plt.subplot(gs[0:2, 1:3])
     cm = plt.cm.get_cmap('RdYlBu')
     l = plt.scatter(x=[], y=[], c=[], s=200, cmap=cm)
-    plt.clim([0, 200])
+    plt.clim([0, 1000])
     plt.xlim(-1, 1)
     plt.ylim(-1, 1)
     plt.plot([-1, 1], [-1, -1], '-k')
