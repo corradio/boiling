@@ -1,6 +1,11 @@
+# RUN WITH
+# THEANO_FLAGS=device=opencl0:0 python test.py
+
+import theano
+import theano.tensor as T
 import numpy as np
 from numpy import linalg
-# import scipy.integrate
+from plot import plot_simulation
 
 N = 250
 R = 0.05
@@ -37,9 +42,44 @@ TEMPERATURE_HOT = 10.0
 GRAVITY = -10.0
 if GRAVITY == 0.0: print 'GRAVITY IS OFF.'
 
-T = np.arange(t0, tend, DELTA_T)
+Tspan = np.arange(t0, tend, DELTA_T)
 
-print 'Running %s steps from t=%s to t=%s' % (len(T), t0, tend)
+print 'Running %s steps from t=%s to t=%s' % (len(Tspan), t0, tend)
+
+def velocity_vervet(X_m, dt, GRAVITY):
+    #X_m = T.dmatrix('X_m')
+    #X_p = T.dmatrix('X_p')
+    #dt = T.dscalar('dt')
+    #GRAVITY = T.dscalar('GRAVITY')
+    # X_p = X_m * A + b
+    A = T.stacklists([
+        [ 1,  0,  0,  0],
+        [ 0,  1,  0,  0],
+        [dt,  0,  1,  0],
+        [ 0, dt,  0,  1]
+    ])
+    B = T.stacklists([[0, 0.5 * GRAVITY * dt * dt, 0, GRAVITY * dt]]).repeat(X_m.shape[0], axis=0)
+    return T.dot(X_m, A) + B
+
+####
+# Compile main_loop
+####
+#X_0 = theano.shared(x0)
+def get_main_loop(Tspan):
+    X_0 = T.dmatrix('X_0')
+    dt = T.dscalar('dt')
+    GRAVITY = T.dscalar('GRAVITY')
+
+    result, updates = theano.scan(fn=velocity_vervet,
+                                  outputs_info=X_0, # Output shape
+                                  non_sequences=[dt, GRAVITY], # Fixed parameters
+                                  n_steps=len(Tspan))
+
+    return theano.function(inputs=[X_0, dt, GRAVITY], outputs=result, updates=updates)
+
+simulate = get_main_loop(Tspan)
+r = simulate(x0, DELTA_T, GRAVITY)
+plot_simulation(r)
 
 def solve_second_degree_polynomial(a, b, c):
     '''
@@ -139,49 +179,19 @@ def collisions(X, t, only_walls=False):
 
     return evt[evt_t > t + EPS_t], evt_t[evt_t > t + EPS_t]
 
-def periodic_boundary_conditions(X):
-    X[X[:, 0] > 1, 0] = -1.0
-    X[X[:, 0] < -1, 0] = 1.0
-    X[X[:, 1] > 1, 1] = -1.0
-    X[X[:, 1] < -1, 1] = 1.0
-    return X
+####
+# Compile velocity_vervet
+####
 
-def reflective_boundary_conditions(X):
 
-    ix = X[:, 0] > 1 - R
-    X[ix, 2] *= -1.0
-    #X[ix, 0] = 1.0 - R
-
-    ix = X[:, 0] < -1 + R
-    X[ix, 2] *= -1.0
-    #X[ix, 0] = -1.0 + R
-
-    ix = X[:, 1] > 1 - R
-    X[ix, 3] -= TEMPERATURE_DIFF
-    X[ix, 3] *= -1.0
-    #X[ix, 1] = 1.0 - R
-
-    ix = X[:, 1] < -1 + R
-    X[ix, 3] *= -1.0
-    X[ix, 3] += TEMPERATURE_DIFF
-    #X[ix, 1] = -1.0 + R
-
-    return X
-
-def velocity_vervet(x_m, dt):
-    x_p = x_m.copy()
-    # velocity_vervet
-    x_p[:, 0] = x_m[:, 0] + x_m[:, 2] * dt
-    x_p[:, 1] = x_m[:, 1] + x_m[:, 3] * dt + 0.5 * GRAVITY * dt * dt
-    x_p[:, 2] = x_m[:, 2]
-    x_p[:, 3] = x_m[:, 3] + GRAVITY * dt
-    return x_p
 
 def distance(i, j, X):
     dx = X[i, 0:2] - X[j, 0:2]
     return linalg.norm(dx)
 
 def simulate(x0, T):
+    r = T.dmatrix('r')
+
     r = [x0] # TODO: Pre-allocate
 
     x_m = x0
@@ -252,24 +262,3 @@ def simulate(x0, T):
         return r
 
     return r
-
-    # if False:
-    #     # Y is a matrix with each row being a particle
-    #     # A row has state [pos_x, pos_y, vel_x, vel_y]
-    #     # f is the derivative function of state x at time t
-    #     def f(Y, t):
-    #         F = Y.reshape(N, 4)
-    #         F[:, 0:2] = F[:, 2:4] # Copy velocities
-    #         F[:, 2:4] = 0.0001 # Set accelerations
-    #         # Convert to 1D array
-    #         return F.reshape(1, 4 * N)[0]
-
-    #     # Solve y'(t) = f(t, y)
-    #     # TODO: Add Jac
-    #     r = scipy.integrate.odeint(f, x0, T)[1:]
-
-from plot import plot_simulation
-
-
-r = simulate(x0, T)
-plot_simulation(r)
