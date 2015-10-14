@@ -1,9 +1,10 @@
 import numpy as np
 from numpy import linalg
+from quadtree import QuadNode
 # import scipy.integrate
 
-N = 250
-R = 0.05
+N = 600
+R = 0.02
 
 # *** 
 # In principle we should have a closed form solution for the trajectory
@@ -22,7 +23,7 @@ for i in range(sqrtNceil):
 
 t0 = 0
 tend = 100
-DELTA_T = 0.01
+DELTA_T = 0.001
 EPS_t = 1e-7
 EPS_dt = 1e-3*0
 EPS = 1e-6#1e-12
@@ -33,7 +34,7 @@ EPS = 1e-6#1e-12
 #   This requires having very small steps however..
 
 TEMPERATURE_COLD = 1.0
-TEMPERATURE_HOT = 10.0
+TEMPERATURE_HOT = 5.0
 GRAVITY = -10.0
 if GRAVITY == 0.0: print 'GRAVITY IS OFF.'
 
@@ -57,10 +58,9 @@ def solve_second_degree_polynomial(a, b, c):
     return []
 
 def collisions(X, t, only_walls=False):
-    # Find all colisions
-    # http://homepages.warwick.ac.uk/~masdr/JOURNALPUBS/stuart48.pdf
-    # Note this works only for non-accelerating particles, which is not true
-    # here. Instead, we should use: http://stackoverflow.com/questions/1916259/collision-detection-between-accelerating-spheres
+    quad = QuadNode((-1.0, -1.0, 1.0, 1.0))
+    for i in range(N): quad.insert(i, X[i, 0], X[i, 1])
+
     evt = []
     evt_t = []
     for i in range(N):
@@ -91,8 +91,16 @@ def collisions(X, t, only_walls=False):
             evt_t.extend(t_cols)
         if only_walls: continue # Only walls
 
+        NEARBY_SIZE = 0.1
+        nearby_box = (
+            X[i, 0] - 0.5 * NEARBY_SIZE, 
+            X[i, 1] - 0.5 * NEARBY_SIZE, 
+            X[i, 0] + 0.5 * NEARBY_SIZE, 
+            X[i, 1] + 0.5 * NEARBY_SIZE)
+        nearby = quad.get_within(nearby_box)
         for j in range(N):
             if not i < j: continue
+            if not j in nearby: continue
 
             dx = X[i, 0:2] - X[j, 0:2]
             dv = X[i, 2:4] - X[j, 2:4]
@@ -217,9 +225,9 @@ def simulate(x0, T):
                                 pos = x_m[i, 0:2]
                                 # Which boundary is closest
                                 obj = np.array([
-                                    abs(pos[0] - (1 - R)),  # right
+                                    abs(pos[0] - ( 1 - R)),  # right
                                     abs(pos[0] - (-1 + R)), # left
-                                    abs(pos[1] - (1 - R)),  # top
+                                    abs(pos[1] - ( 1 - R)),  # top
                                     abs(pos[1] - (-1 + R))  # bottom
                                 ])
                                 ix = np.where(obj < EPS)[0]
@@ -229,12 +237,12 @@ def simulate(x0, T):
                                     if ii == 0 or ii == 1: x_m[i, 2] *= -1 # right/left
                                     # We use *uniform* distributions here
                                     if ii == 2: # top
-                                        v = np.random.rand(2) - 0.5 # Random vector centered around 0
+                                        v = 2.0 * np.random.rand(2) - 1.0 # Random vector in [-1, 1]
                                         if v[1] > 0: v[1] = -v[1] # Vy must be negative
                                         x_m[i, 2:4] = v / linalg.norm(v) * TEMPERATURE_COLD # top
                                     if ii == 3: 
-                                        v = np.random.rand(2) - 0.5 # Random vector centered around 0
-                                        if v[1] < 0: v[1] = -v[1] # Vy must be negative
+                                        v = 2.0 * np.random.rand(2) - 1.0 # Random vector in [-1, 1]
+                                        if v[1] < 0: v[1] = -v[1] # Vy must be positive
                                         x_m[i, 2:4] = v / linalg.norm(v) * TEMPERATURE_HOT # top
                                     #print 'after', x_m[i, :], 'y=%s' % x_m[i, 1], 'vy=%s' % x_m[i, 3]
                         t_m = t_col
