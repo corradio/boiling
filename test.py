@@ -3,7 +3,7 @@ from numpy import linalg
 from quadtree import QuadNode
 # import scipy.integrate
 
-N = 600
+N = 1000
 R = 0.02
 
 # *** 
@@ -11,15 +11,17 @@ R = 0.02
 # up to a collision (which we can predict)
 # So we should have a perfectly solvable system with no interpenetration
 
-print 'Creating initial conditions'
-# Normal uniform speeds
-x0 = 1.0 * (np.random.rand(N, 4) - 0.5)
-# Grid positions
-sqrtNceil = int(np.ceil(np.sqrt(N)))
-for i in range(sqrtNceil):
-    for j in range(sqrtNceil):
-        if i * sqrtNceil + j > N - 1: break
-        x0[i * sqrtNceil + j, 0:2] = [1.8 / sqrtNceil * i - 0.8, 1.8 / sqrtNceil * j - 0.8]
+def gen_x0():
+    print 'Creating initial conditions'
+    # Normal uniform speeds
+    x0 = 1.0 * (np.random.rand(N, 4) - 0.5)
+    # Grid positions
+    sqrtNceil = int(np.ceil(np.sqrt(N)))
+    for i in range(sqrtNceil):
+        for j in range(sqrtNceil):
+            if i * sqrtNceil + j > N - 1: break
+            x0[i * sqrtNceil + j, 0:2] = [1.8 / sqrtNceil * i - 0.8, 1.8 / sqrtNceil * j - 0.8]
+    return x0
 
 t0 = 0
 tend = 100
@@ -190,6 +192,11 @@ def distance(i, j, X):
     return linalg.norm(dx)
 
 def simulate(x0, T):
+    def done(r):
+        r = np.array(r)
+        np.save('last.npy', r)
+        return r
+
     r = [x0] # TODO: Pre-allocate
 
     x_m = x0
@@ -257,27 +264,22 @@ def simulate(x0, T):
                 t_m = t
             else: r.append(x_p)
     except KeyboardInterrupt:
-        return r
+        return done(r)
 
+    return done(r)
+
+def resume(r, T):
+    if type(r) == str:
+        r = np.load(r)
+        print '%s rows loaded' % r.shape[0]
+    x0 = r[-1, :, :]
+    r2 = simulate(x0, T)[1:, :, :]
+    r = np.concatenate((r, r2), axis=0)
+    np.save('lastresume.npy', r)
     return r
 
-    # if False:
-    #     # Y is a matrix with each row being a particle
-    #     # A row has state [pos_x, pos_y, vel_x, vel_y]
-    #     # f is the derivative function of state x at time t
-    #     def f(Y, t):
-    #         F = Y.reshape(N, 4)
-    #         F[:, 0:2] = F[:, 2:4] # Copy velocities
-    #         F[:, 2:4] = 0.0001 # Set accelerations
-    #         # Convert to 1D array
-    #         return F.reshape(1, 4 * N)[0]
-
-    #     # Solve y'(t) = f(t, y)
-    #     # TODO: Add Jac
-    #     r = scipy.integrate.odeint(f, x0, T)[1:]
 
 from plot import plot_simulation
 
-
-r = simulate(x0, T)
-plot_simulation(r)
+#r = simulate(x0, T)
+plot_simulation(r[0::10, :, :])
