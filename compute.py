@@ -3,15 +3,15 @@ from numpy import linalg
 from quadtree import QuadNode
 # import scipy.integrate
 
-N = 1000
-R = 0.02
+N = 3000
+R = 0.01
 
 # *** 
 # In principle we should have a closed form solution for the trajectory
 # up to a collision (which we can predict)
 # So we should have a perfectly solvable system with no interpenetration
 
-def gen_x0():
+def gen_x0(N):
     print 'Creating initial conditions'
     # Normal uniform speeds
     x0 = 1.0 * (np.random.rand(N, 4) - 0.5)
@@ -36,7 +36,7 @@ EPS = 1e-6#1e-12
 #   This requires having very small steps however..
 
 TEMPERATURE_COLD = 1.0
-TEMPERATURE_HOT = 5.0
+TEMPERATURE_HOT = 15.0
 GRAVITY = -10.0
 if GRAVITY == 0.0: print 'GRAVITY IS OFF.'
 
@@ -66,6 +66,8 @@ def collisions(X, t, only_walls=False):
     evt = []
     evt_t = []
     for i in range(N):
+        NEARBY_SIZE = 0.05
+
         # Add collision will all walls
         if X[i, 0] + EPS < -1 + R or X[i, 0] - EPS > 1 - R: print 'Particle %s out of bound! x=%s' % (i, X[i, 0]); #error
         if X[i, 1] + EPS < -1 + R or X[i, 1] - EPS > 1 - R: print 'Particle %s out of bound! y=%s' % (i, X[i, 1]); #error
@@ -81,10 +83,14 @@ def collisions(X, t, only_walls=False):
         cyu = X[i, 1] - 1 + R
         cyd = X[i, 1] + 1 - R
         dt = []
-        dt += solve_second_degree_polynomial(ax, bx, cxr)
-        dt += solve_second_degree_polynomial(ax, bx, cxl)
-        dt += solve_second_degree_polynomial(ay, by, cyu)
-        dt += solve_second_degree_polynomial(ay, by, cyd)
+        if cxr + 0.5 * NEARBY_SIZE > 0:
+            dt += solve_second_degree_polynomial(ax, bx, cxr)
+        if cxl - 0.5 * NEARBY_SIZE < 0:
+            dt += solve_second_degree_polynomial(ax, bx, cxl)
+        if cyu + 0.5 * NEARBY_SIZE > 0:
+            dt += solve_second_degree_polynomial(ay, by, cyu)
+        if cyu - 0.5 * NEARBY_SIZE < 0:
+            dt += solve_second_degree_polynomial(ay, by, cyd)
         dt = np.array(dt)
         dt = dt[dt > EPS_dt]
         if len(dt) > 0:
@@ -93,7 +99,6 @@ def collisions(X, t, only_walls=False):
             evt_t.extend(t_cols)
         if only_walls: continue # Only walls
 
-        NEARBY_SIZE = 0.1
         nearby_box = (
             X[i, 0] - 0.5 * NEARBY_SIZE, 
             X[i, 1] - 0.5 * NEARBY_SIZE, 
@@ -222,10 +227,20 @@ def simulate(x0, T):
                         for ij_col in evt[evt_t < t_col + EPS_t]:
                             if ij_col[1] is not None:
                                 # Elastic collision for equal masses: switch speeds
-                                u1 = x_p[ij_col[0], 2:4]
-                                u2 = x_p[ij_col[1], 2:4]
-                                x_m[ij_col[0], 2:4] = u2
-                                x_m[ij_col[1], 2:4] = u1
+                                # u1 = x_p[ij_col[0], 2:4]
+                                # u2 = x_p[ij_col[1], 2:4]
+                                # x_m[ij_col[0], 2:4] = u2
+                                # x_m[ij_col[1], 2:4] = u1
+
+                                # Normal unit vector
+                                n_12 = x_p[ij_col[1], 0:2] - x_p[ij_col[0], 0:2]
+                                n_12 = n_12 / np.linalg.norm(n_12)
+                                # Relative velocities
+                                rel_vel_12 = x_p[ij_col[1], 2:4] - x_p[ij_col[0], 2:4]
+                                # Set
+                                coef_restitution = 0.98
+                                x_m[ij_col[0], 2:4] += 0.5 * (1 + coef_restitution) * np.dot(n_12, rel_vel_12) * n_12
+                                x_m[ij_col[1], 2:4] -= 0.5 * (1 + coef_restitution) * np.dot(n_12, rel_vel_12) * n_12
                             else:
                                 # Wall collision
                                 i = ij_col[0]
@@ -281,5 +296,5 @@ def resume(r, T):
 
 from plot import plot_simulation
 
-#r = simulate(x0, T)
+r = simulate(gen_x0(N), T)
 plot_simulation(r[0::10, :, :])
