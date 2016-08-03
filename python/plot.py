@@ -29,6 +29,10 @@ def compute_aggregated_velocity_field(state, N=20):
             M.append([x1, x2, np.sum(state[ix, 2]), np.sum(state[ix, 3])])
     return np.array(M)
 
+def load_csv(path):
+    data = np.loadtxt(path, delimiter=';')
+    return data.reshape(data.shape[0], data.shape[1] / 4, 4)
+
 def plot_simulation(r, interval=1, quiver=False):
     # Plot
 

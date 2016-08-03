@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		679892CD1D522EA3009100CD /* kernel.cl in Sources */ = {isa = PBXBuildFile; fileRef = 679892CC1D522EA3009100CD /* kernel.cl */; };
+		679892CE1D522F6D009100CD /* kernel.cl in CopyFiles */ = {isa = PBXBuildFile; fileRef = 679892CC1D522EA3009100CD /* kernel.cl */; };
 		C3770EFB0E6F1121009A5A77 /* convection.c in Sources */ = {isa = PBXBuildFile; fileRef = C3770EFA0E6F1121009A5A77 /* convection.c */; };
 		C3770EFD0E6F1138009A5A77 /* OpenCL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C3770EFC0E6F1138009A5A77 /* OpenCL.framework */; };
 /* End PBXBuildFile section */
@@ -18,6 +20,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 16;
 			files = (
+				679892CE1D522F6D009100CD /* kernel.cl in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -25,6 +28,7 @@
 
 /* Begin PBXFileReference section */
 		466E0F5F0C932E1A00ED01DB /* convection */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = convection; sourceTree = BUILT_PRODUCTS_DIR; };
+		679892CC1D522EA3009100CD /* kernel.cl */ = {isa = PBXFileReference; explicitFileType = sourcecode.opencl; fileEncoding = 4; path = kernel.cl; sourceTree = "<group>"; };
 		C3770EFA0E6F1121009A5A77 /* convection.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = convection.c; sourceTree = "<group>"; };
 		C3770EFC0E6F1138009A5A77 /* OpenCL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenCL.framework; path = /System/Library/Frameworks/OpenCL.framework; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
@@ -62,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				C3770EFA0E6F1121009A5A77 /* convection.c */,
+				679892CC1D522EA3009100CD /* kernel.cl */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -128,6 +133,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C3770EFB0E6F1121009A5A77 /* convection.c in Sources */,
+				679892CD1D522EA3009100CD /* kernel.cl in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
