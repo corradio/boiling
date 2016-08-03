@@ -26,14 +26,14 @@ int main(int argc, char** argv)
     // Simulation parameters
     unsigned int numParticles = 1024;
     
-    float tEnd = 1.0f;
-    float dt = 0.01f;
+    float tEnd = 100.0f;
+    float dt = 0.001f;
+    float dtSampling = 0.1;
     float gravity = -10.0f;
     float particleRadius = 0.01;
     
     float t = 0.0f;
     float data[numParticles * 4];              // original data set given to device
-    
     
     // Load Kernel
     FILE *fp;
@@ -168,6 +168,7 @@ int main(int argc, char** argv)
         printf("Error: Failed to retrieve kernel work group info! %d\n", err);
         exit(1);
     }
+    global_work_size = numParticles;
     
     // Prepare output data
     fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "w");
@@ -177,7 +178,7 @@ int main(int argc, char** argv)
     }
     
     // TODO: we didn't write initial conditions
-    // TODO: optimize!?
+    float lastSampleTime = 0;
     while (t < tEnd) {
         t += dt;
         printf("t = %f\n", t);
@@ -185,7 +186,6 @@ int main(int argc, char** argv)
         // Execute the kernel over the entire range of our 1d input data set
         // using the maximum number of work group items for this device
         //
-        global_work_size = numParticles;
         err = clEnqueueNDRangeKernel(commands, kernel_integrate, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
         if (err)
         {
@@ -193,13 +193,12 @@ int main(int argc, char** argv)
             return EXIT_FAILURE;
         }
         
-        for (int i=0; i < numParticles; i++) {
-            // Wait for the command commands to get serviced before reading back results
-            //
-            //clFinish(commands);
+        if (t - lastSampleTime >= dtSampling)
+        {
+            lastSampleTime = t;
+            printf("Writing..");
             
             // Read back the results from the device
-            // This is slow..
             //
             err = clEnqueueReadBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * numParticles, data, 0, NULL, NULL);
             if (err != CL_SUCCESS)
@@ -208,12 +207,18 @@ int main(int argc, char** argv)
                 exit(1);
             }
             
-            /*if (i==0)
-                fprintf(fp, "%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
-            else
-                fprintf(fp, ";%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
-        }
-        fprintf(fp, "\n");*/
+            for (int i=0; i < numParticles; i++) {
+                // Wait for the command commands to get serviced before reading back results
+                //
+                //clFinish(commands);
+                
+                if (i==0)
+                    fprintf(fp, "%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
+                else
+                    fprintf(fp, ";%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
+                if (i==numParticles-1)
+                    fprintf(fp, "\n");
+            }
         }
     }
     
