@@ -34,6 +34,9 @@ void writeCsv(FILE* fp, float* data, const uint numParticles) {
 
 int main(int argc, char** argv)
 {
+    // Arguments
+    bool resume = true;
+    
     // Simulation parameters
     unsigned int numParticles = 2048;
     
@@ -77,17 +80,53 @@ int main(int argc, char** argv)
     
     int err;                            // error code returned from api calls
     
-    // Create data
-    int numRows = 64; // some power of 2
-    int numCols = numParticles / numRows;
-    for (int i = 0; i < numRows; i++)
+    if (resume)
     {
-        for (int j = 0; j < numCols; j++) {
-            int n = i * numCols + j;
-            data[n*4]     = -1.0 + 2.0 / numCols * (0.5 + j);
-            data[n*4 + 1] = -1.0 + 2.0 / numRows * (0.5 + i);
-            data[n*4 + 2] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
-            data[n*4 + 3] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+        // Load last line of csv
+        fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "r+");
+        if (!fp) {
+            printf("Error: Failed to find kernel path!\n");
+            return EXIT_FAILURE;
+        }
+        char* line = (char*)malloc(MAX_SOURCE_SIZE);
+        while (fgets(line, MAX_SOURCE_SIZE, fp)) {}
+        // Parse
+        int i = 0;
+        char* tok;
+        for (tok = strtok(line, ";");
+             tok && *tok;
+             tok = strtok(NULL, ";\n"))
+        {
+            data[i] = atof(tok);
+            i++;
+        }
+        if (!i) {
+            printf("Error: Did not read any input to resume from!\n");
+            return EXIT_FAILURE;
+        }
+    }
+    else
+    {
+        // Create data
+        int numRows = 64; // some power of 2
+        int numCols = numParticles / numRows;
+        for (int i = 0; i < numRows; i++)
+        {
+            for (int j = 0; j < numCols; j++)
+            {
+                int n = i * numCols + j;
+                data[n*4]     = -1.0 + 2.0 / numCols * (0.5 + j);
+                data[n*4 + 1] = -1.0 + 2.0 / numRows * (0.5 + i);
+                data[n*4 + 2] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+                data[n*4 + 3] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+            }
+        }
+        
+        // Prepare output pipe
+        fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "w");
+        if (!fp) {
+            printf("Error: Failed to create output!\n");
+            return EXIT_FAILURE;
         }
     }
     
@@ -204,21 +243,13 @@ int main(int argc, char** argv)
     }
     global_work_size = numParticles;
     
-    // Prepare output data
-    fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "w");
-    if (!fp) {
-        printf("Error: Failed to create output!\n");
-        return EXIT_FAILURE;
-    }
-    
     // Write initial state
-    writeCsv(fp, data, numParticles);
+    if (!resume)
+        writeCsv(fp, data, numParticles);
     
     float lastSampleTime = 0;
     while (t < tEnd) {
         t += dt;
-        //printf("t = %f\n", t);
-        
         // Execute the kernel over the entire range of our 1d input data set
         // using the maximum number of work group items for this device
         //
