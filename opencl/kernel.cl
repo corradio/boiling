@@ -33,9 +33,9 @@ __kernel void integrate(
     {
         //state.y = -1.0f + particleRadius;
         state.w *= -1;
-        // TODO: Add randomness
+        // TODO: Add randomness to direction and length
         float2 v = (float2)(state.z, state.w);
-        float2 vHot = v / length(v) * 15.0f;
+        float2 vHot = normalize(v) * 15.0f;
         state.z = vHot.x;
         state.w = vHot.y;
     }
@@ -63,16 +63,16 @@ __kernel void collide(
 
         // Calculate distance
         float4 rel = globalState[j] - globalState[i];
-        float dist = length(rel);
+        float2 r = (float2)(rel.x, rel.y);
+        float dist = length(r);
         if (dist <= 2.0 * particleRadius) // Collision
         {
-            float2 n = (float2)(rel.x / dist, rel.y / dist);
-            float2 relVel = (float2)(rel.z, rel.w);
-            float2 q = 0.5f * (1.0f + restitutionCoefficient) * dot(n, relVel) * n;
-            globalState[i].z += q.x;
-            globalState[i].w += q.y;
-            globalState[j].z -= q.x;
-            globalState[j].w -= q.y;
+            float2 n = (float2)(r.x / dist, r.y / dist);
+            float2 d = 0.5f * (1.0f + restitutionCoefficient) * dot(n, (float2)(rel.z, rel.w)) * n;
+            globalState[i].z += d.x;
+            globalState[i].w += d.y;
+            globalState[j].z -= d.x;
+            globalState[j].w -= d.y;
         }
     }
 }

@@ -40,9 +40,9 @@ int main(int argc, char** argv)
     // Simulation parameters
     unsigned int numParticles = 2048;
     
-    float tEnd = 1.0f;
+    float tEnd = 0.1f;
     float dt = 0.00001f;
-    float dtSampling = 0.01;
+    float dtSampling = 0.001;
     float gravity = -10.0f;
     float particleRadius = 0.01;
     float restitutionCoefficient = 0.98;

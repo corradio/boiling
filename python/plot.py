@@ -129,7 +129,7 @@ def plot_simulation(r, interval=1, quiver=False):
     plt.ylim(0, 2000)
     plt.legend(['dE_in', 'dE_out'])
 
-    line_ani = animation.FuncAnimation(fig, update_plot, len(data), fargs=(data, velocities, l, plt_temperature, plt_hist_y_temperature, plt_hist_y_density, plt_dE, quiver),
+    line_ani = animation.FuncAnimation(fig, update_plot, len(data) - 1, fargs=(data, velocities, l, plt_temperature, plt_hist_y_temperature, plt_hist_y_density, plt_dE, quiver),
         interval=interval, blit=False)
 
     #line_ani.save('demoanimation.gif', writer='imagemagick', fps=10);
