@@ -16,9 +16,6 @@
 
 #define MAX_SOURCE_SIZE (0x100000)
 
-// void simulation_init();
-// void simulation_collect();
-
 // TODO: Support multiple GPUs
 
 void writeCsv(FILE* fp, float* data, const uint numParticles) {
@@ -40,9 +37,9 @@ int main(int argc, char** argv)
     // Simulation parameters
     unsigned int numParticles = 2048;
     
-    float tEnd = 0.1f;
-    float dt = 0.00001f;
-    float dtSampling = 0.001;
+    float tEnd = 0.6f;
+    float dt = 0.000001f;
+    float dtSampling = 0.005;
     float gravity = -10.0f;
     float particleRadius = 0.01;
     float restitutionCoefficient = 0.98;
