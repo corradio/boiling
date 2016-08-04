@@ -21,16 +21,28 @@
 
 // TODO: Support multiple GPUs
 
+void writeCsv(FILE* fp, float* data, const uint numParticles) {
+    for (int i=0; i < numParticles; i++) {
+        if (i==0)
+            fprintf(fp, "%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
+        else
+            fprintf(fp, ";%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
+        if (i==numParticles-1)
+            fprintf(fp, "\n");
+    }
+}
+
 int main(int argc, char** argv)
 {
     // Simulation parameters
-    unsigned int numParticles = 1024;
+    unsigned int numParticles = 2048;
     
-    float tEnd = 100.0f;
-    float dt = 0.001f;
-    float dtSampling = 0.1;
+    float tEnd = 1.0f;
+    float dt = 0.00001f;
+    float dtSampling = 0.01;
     float gravity = -10.0f;
     float particleRadius = 0.01;
+    float restitutionCoefficient = 0.98;
     
     float t = 0.0f;
     float data[numParticles * 4];              // original data set given to device
@@ -40,7 +52,6 @@ int main(int argc, char** argv)
     const char kernelpath[] = "./kernel.cl";
     size_t kernel_source_size;
     char *kernel_source_str;
-    cl_int i;
     
     /* Load kernel source code */
     fp = fopen(kernelpath, "r");
@@ -57,6 +68,7 @@ int main(int argc, char** argv)
     cl_command_queue commands;          // compute command queue
     cl_program program;                 // compute program
     cl_kernel kernel_integrate;         // compute kernel
+    cl_kernel kernel_collide;           // compute kernel
     
     cl_mem input;                       // device memory used for the input array
     
@@ -66,8 +78,18 @@ int main(int argc, char** argv)
     int err;                            // error code returned from api calls
     
     // Create data
-    for(int i = 0; i < numParticles * 4; i++)
-        data[i] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+    int numRows = 64; // some power of 2
+    int numCols = numParticles / numRows;
+    for (int i = 0; i < numRows; i++)
+    {
+        for (int j = 0; j < numCols; j++) {
+            int n = i * numCols + j;
+            data[n*4]     = -1.0 + 2.0 / numCols * (0.5 + j);
+            data[n*4 + 1] = -1.0 + 2.0 / numRows * (0.5 + i);
+            data[n*4 + 2] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+            data[n*4 + 3] = (rand() * 2.0 - (float)RAND_MAX) / (float)RAND_MAX;
+        }
+    }
     
     // Connect to a compute device
     //
@@ -120,12 +142,13 @@ int main(int argc, char** argv)
         exit(1);
     }
     
-    // Create the compute kernel in the program we wish to run
+    // Create the compute kernels in the program we wish to run
     //
     kernel_integrate = clCreateKernel(program, "integrate", &err);
-    if (!kernel_integrate || err != CL_SUCCESS)
+    kernel_collide = clCreateKernel(program, "collide", &err);
+    if (!kernel_integrate || !kernel_collide || err != CL_SUCCESS)
     {
-        printf("Error: Failed to create compute kernel!\n");
+        printf("Error: Failed to create compute kernels!\n");
         exit(1);
     }
     
@@ -151,9 +174,20 @@ int main(int argc, char** argv)
         exit(1);
     }
     
+    err = 0;
+    err  = clSetKernelArg(kernel_collide, 0, sizeof(cl_mem), &input);
+    err |= clSetKernelArg(kernel_collide, 1, sizeof(unsigned int), &numParticles);
+    err |= clSetKernelArg(kernel_collide, 2, sizeof(float), &particleRadius);
+    err |= clSetKernelArg(kernel_collide, 3, sizeof(float), &restitutionCoefficient);
+    if (err != CL_SUCCESS)
+    {
+        printf("Error: Failed to set kernel arguments! %d\n", err);
+        exit(1);
+    }
+    
     // Write our data set into the input array in device memory
     //
-    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(float) * numParticles, data, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * numParticles, data, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to write to source array!\n");
@@ -177,26 +211,29 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
     
-    // TODO: we didn't write initial conditions
+    // Write initial state
+    writeCsv(fp, data, numParticles);
+    
     float lastSampleTime = 0;
     while (t < tEnd) {
         t += dt;
-        printf("t = %f\n", t);
+        //printf("t = %f\n", t);
         
         // Execute the kernel over the entire range of our 1d input data set
         // using the maximum number of work group items for this device
         //
         err = clEnqueueNDRangeKernel(commands, kernel_integrate, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+        err |= clEnqueueNDRangeKernel(commands, kernel_collide, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
         if (err)
         {
-            printf("Error: Failed to execute kernel. Error %d!\n", err);
+            printf("Error: Failed to execute kernels. Error %d!\n", err);
             return EXIT_FAILURE;
         }
         
         if (t - lastSampleTime >= dtSampling)
         {
             lastSampleTime = t;
-            printf("Writing..");
+            printf("Writing at t = %f..\n", t);
             
             // Read back the results from the device
             //
@@ -207,18 +244,7 @@ int main(int argc, char** argv)
                 exit(1);
             }
             
-            for (int i=0; i < numParticles; i++) {
-                // Wait for the command commands to get serviced before reading back results
-                //
-                //clFinish(commands);
-                
-                if (i==0)
-                    fprintf(fp, "%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
-                else
-                    fprintf(fp, ";%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
-                if (i==numParticles-1)
-                    fprintf(fp, "\n");
-            }
+            writeCsv(fp, data, numParticles);
         }
     }
     

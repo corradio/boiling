@@ -89,7 +89,7 @@ def plot_simulation(r, interval=1, quiver=False):
         l = plt.quiver(M[:, 0], M[:, 1], M[:, 2], M[:, 3], scale=1000)
     else:
         cm = plt.get_cmap('Reds')
-        l = plt.scatter(x=[], y=[], c=[], s=20, cmap=cm, lw=0.3)
+        l = plt.scatter(x=[], y=[], c=[], s=10, cmap=cm, lw=0.3)
         plt.clim([velocities[-1].min(), velocities[-1].max()])
     plt.xlim(-1, 1)
     plt.ylim(-1, 1)
