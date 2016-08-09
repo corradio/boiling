@@ -17,35 +17,41 @@
 #define MAX_SOURCE_SIZE (0x100000)
 
 // TODO: Support multiple GPUs
+// Note: Velocities need to be big enough so we avoid having rounding errors leading to 0s.
 
-void writeCsv(FILE* fp, float* data, const uint numParticles) {
-    for (int i=0; i < numParticles; i++) {
+void writeCsvLine(FILE* fp, float* array, const uint length) {
+    for (int i=0; i < length; i++) {
         if (i==0)
-            fprintf(fp, "%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
+            fprintf(fp, "%f", array[i]);
         else
-            fprintf(fp, ";%f;%f;%f;%f", data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]);
-        if (i==numParticles-1)
+            fprintf(fp, ";%f", array[i]);
+        if (i == length - 1)
             fprintf(fp, "\n");
     }
 }
 
+
 int main(int argc, char** argv)
 {
     // Arguments
-    bool resume = true;
+    bool resume = false;
     
     // Simulation parameters
+    unsigned int maxParticles = 2048; // must be a nice power of 2
     unsigned int numParticles = 2048;
     
-    float tEnd = 0.6f;
-    float dt = 0.000001f;
-    float dtSampling = 0.005;
+    float tEnd = 10.0f;
+    float dt = 0.00001f;
+    float dtSampling = 0.01f;
     float gravity = -10.0f;
     float particleRadius = 0.01;
-    float restitutionCoefficient = 0.98;
+    float restitutionCoefficient = 0.99;
+    float bottomTemperature = 15.0;
     
     float t = 0.0f;
-    float data[numParticles * 4];              // original data set given to device
+    float data[maxParticles * 4];              // original data set given to device
+    float collisions[maxParticles];
+    float energyInput[maxParticles];
     
     // Load Kernel
     FILE *fp;
@@ -71,18 +77,25 @@ int main(int argc, char** argv)
     cl_kernel kernel_collide;           // compute kernel
     
     cl_mem input;                       // device memory used for the input array
+    cl_mem output;
+    cl_mem collisions_input;
+    cl_mem energy_input;
     
     size_t global_work_size;            // global domain size for our calculation
     size_t local_work_size;             // local domain size for our calculation
     
     int err;                            // error code returned from api calls
     
+    collisions[0] = 0.0f;
+    for (int i=0; i < maxParticles; i++)
+        energyInput[i] = 0.0f;
+    
     if (resume)
     {
         // Load last line of csv
         fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "r+");
         if (!fp) {
-            printf("Error: Failed to find kernel path!\n");
+            printf("Error: Failed to find output.csv!\n");
             return EXIT_FAILURE;
         }
         char* line = (char*)malloc(MAX_SOURCE_SIZE);
@@ -106,7 +119,7 @@ int main(int argc, char** argv)
     {
         // Create data
         int numRows = 64; // some power of 2
-        int numCols = numParticles / numRows;
+        int numCols = maxParticles / numRows;
         for (int i = 0; i < numRows; i++)
         {
             for (int j = 0; j < numCols; j++)
@@ -190,7 +203,10 @@ int main(int argc, char** argv)
     
     // Allocate state memory
     //
-    input  = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * 4 * numParticles, NULL, NULL);
+    input  = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * 4 * maxParticles, NULL, NULL);
+    output  = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * 4 * maxParticles, NULL, NULL);
+    collisions_input = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
+    energy_input = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
     if (!input) {
         printf("Error: Failed to allocate device memory!\n");
         exit(1);
@@ -200,10 +216,12 @@ int main(int argc, char** argv)
     //
     err = 0;
     err  = clSetKernelArg(kernel_integrate, 0, sizeof(cl_mem), &input);
-    err |= clSetKernelArg(kernel_integrate, 1, sizeof(unsigned int), &numParticles);
-    err |= clSetKernelArg(kernel_integrate, 2, sizeof(float), &dt);
-    err |= clSetKernelArg(kernel_integrate, 3, sizeof(float), &gravity);
-    err |= clSetKernelArg(kernel_integrate, 4, sizeof(float), &particleRadius);
+    err |= clSetKernelArg(kernel_integrate, 1, sizeof(cl_mem), &energy_input);
+    err |= clSetKernelArg(kernel_integrate, 2, sizeof(unsigned int), &numParticles);
+    err |= clSetKernelArg(kernel_integrate, 3, sizeof(float), &dt);
+    err |= clSetKernelArg(kernel_integrate, 4, sizeof(float), &gravity);
+    err |= clSetKernelArg(kernel_integrate, 5, sizeof(float), &particleRadius);
+    err |= clSetKernelArg(kernel_integrate, 6, sizeof(float), &bottomTemperature);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to set kernel arguments! %d\n", err);
@@ -212,9 +230,11 @@ int main(int argc, char** argv)
     
     err = 0;
     err  = clSetKernelArg(kernel_collide, 0, sizeof(cl_mem), &input);
-    err |= clSetKernelArg(kernel_collide, 1, sizeof(unsigned int), &numParticles);
-    err |= clSetKernelArg(kernel_collide, 2, sizeof(float), &particleRadius);
-    err |= clSetKernelArg(kernel_collide, 3, sizeof(float), &restitutionCoefficient);
+    err |= clSetKernelArg(kernel_collide, 1, sizeof(cl_mem), &output);
+    err |= clSetKernelArg(kernel_collide, 2, sizeof(cl_mem), &collisions_input);
+    err |= clSetKernelArg(kernel_collide, 3, sizeof(unsigned int), &numParticles);
+    err |= clSetKernelArg(kernel_collide, 4, sizeof(float), &particleRadius);
+    err |= clSetKernelArg(kernel_collide, 5, sizeof(float), &restitutionCoefficient);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to set kernel arguments! %d\n", err);
@@ -223,7 +243,10 @@ int main(int argc, char** argv)
     
     // Write our data set into the input array in device memory
     //
-    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * numParticles, data, 0, NULL, NULL);
+    err  = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(commands, output, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(commands, collisions_input, CL_TRUE, 0, sizeof(float) * maxParticles, collisions, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(commands, energy_input, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to write to source array!\n");
@@ -238,19 +261,32 @@ int main(int argc, char** argv)
         printf("Error: Failed to retrieve kernel work group info! %d\n", err);
         exit(1);
     }
-    global_work_size = numParticles;
+    global_work_size = maxParticles;
+    
+    FILE* fp_collisions = fopen("/Users/olc/dev/boiling/opencl/collisions.csv", "w");
+    if (!fp_collisions) {
+        printf("Error: Failed to find collisions.csv!\n");
+        return EXIT_FAILURE;
+    }
     
     // Write initial state
     if (!resume)
-        writeCsv(fp, data, numParticles);
+    {
+        writeCsvLine(fp, data, numParticles * 4);
+        fprintf(fp_collisions, "%f;%f\n", 0.0f, 0.0f);
+    }
+    
     
     float lastSampleTime = 0;
+    int timeIndex = 0;
     while (t < tEnd) {
-        t += dt;
+        timeIndex++;
+        t = dt * timeIndex;
         // Execute the kernel over the entire range of our 1d input data set
         // using the maximum number of work group items for this device
         //
-        err = clEnqueueNDRangeKernel(commands, kernel_integrate, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+        err  = clEnqueueNDRangeKernel(commands, kernel_integrate, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+        err |= clEnqueueCopyBuffer(commands, input, output, 0, 0, sizeof(float) * 4 * maxParticles, 0, NULL, NULL);
         err |= clEnqueueNDRangeKernel(commands, kernel_collide, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
         if (err)
         {
@@ -258,25 +294,46 @@ int main(int argc, char** argv)
             return EXIT_FAILURE;
         }
         
-        if (t - lastSampleTime >= dtSampling)
+        err = clEnqueueCopyBuffer(commands, output, input, 0, 0, sizeof(float) * 4 * maxParticles, 0, NULL, NULL);
+        if (err)
+        {
+            printf("Error: Failed to execute clEnqueueCopyBuffer. Error %d!\n", err);
+            return EXIT_FAILURE;
+        }
+        
+        // A tolerance relative to dt is added to prevent numerical rounding error problems
+        if (t - lastSampleTime >= dtSampling - dt * 0.01)
         {
             lastSampleTime = t;
-            printf("Writing at t = %f..\n", t);
+            printf("Sampling at t = %f..\n", t);
             
             // Read back the results from the device
             //
-            err = clEnqueueReadBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * numParticles, data, 0, NULL, NULL);
+            clFinish(commands);
+            err  = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
+            err |= clEnqueueReadBuffer(commands, collisions_input, CL_TRUE, 0, sizeof(float) * maxParticles, collisions, 0, NULL, NULL);
+            err |= clEnqueueReadBuffer(commands, energy_input, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
             if (err != CL_SUCCESS)
             {
                 printf("Error: Failed to read output array! %d\n", err);
                 exit(1);
             }
             
-            writeCsv(fp, data, numParticles);
+            writeCsvLine(fp, data, numParticles * 4);
+            
+            double totalEnergyInput = 0.0f;
+            double totalDissipation = 0.0f;
+            for (int i = 0; i < numParticles; i++)
+            {
+                totalEnergyInput += energyInput[i];
+                totalDissipation += collisions[i];
+            }
+            fprintf(fp_collisions, "%f;%f\n", totalDissipation, totalEnergyInput);
         }
     }
     
     fclose(fp);
+    fclose(fp_collisions);
     
     // Shutdown and cleanup
     //

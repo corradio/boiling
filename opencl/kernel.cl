@@ -1,78 +1,93 @@
 __kernel void integrate(
-    __global float4 *globalState, // input-output
+    __global float4 *globalState, // input-output,
+    __global float *cumulativeEnergyInput, // input-output
     const unsigned int numParticles,
     float dt,
-    float gravity,
-    float particleRadius)
+    const float gravity,
+    const float particleRadius,
+    const float bottomTemperature)
 {
-    const uint index = get_global_id(0);
-    if(index >= numParticles)
+    const uint i = get_global_id(0);
+    if (i >= numParticles)
         return;
 
-    float4 state = globalState[index];
-
-    // TODO: Vectorise (if it speeds up?)
-    state.x += state.z * dt; // z is vx
-    state.y += state.w * dt + 0.5 * gravity * dt * dt; // w is vy
-    // state.z = state.z;
-    state.w += gravity * dt;
+    // Idea: Vectorise (if it speeds up?)
+    globalState[i].x += globalState[i].z * dt; // z is vx
+    globalState[i].y += globalState[i].w * dt + 0.5f * gravity * dt * dt; // w is vy
+    // globalState[i].z = globalState[i].z;
+    globalState[i].w += gravity * dt;
 
     // Boundary conditions
-    if(state.x < -1.0f + particleRadius) // left
+    if(globalState[i].x <= -1.0f + particleRadius) // left
     {
-        //state.x = -1.0f + particleRadius;
-        state.z *= -1;
+        //globalState[i].x = -1.0f + particleRadius;
+        globalState[i].z *= -1.0f;
     }
-    if(state.x > 1.0f - particleRadius) // right
+    if(globalState[i].x >= 1.0f - particleRadius) // right
     {
-        //state.x = 1.0f - particleRadius;
-        state.z *= -1;
+        //globalState[i].x = 1.0f - particleRadius;
+        globalState[i].z *= -1.0f;
     }
 
-    if(state.y < -1.0f + particleRadius) // bottom
+    if(globalState[i].y <= -1.0f + particleRadius) // bottom
     {
-        //state.y = -1.0f + particleRadius;
-        state.w *= -1;
+        //globalState[i].y = -1.0f + particleRadius;
+        globalState[i].w *= -1.0f;
+
         // TODO: Add randomness to direction and length
-        float2 v = (float2)(state.z, state.w);
-        float2 vHot = normalize(v) * 15.0f;
-        state.z = vHot.x;
-        state.w = vHot.y;
+        float2 v = (float2)(globalState[i].z, globalState[i].w);
+        float2 vHot = normalize(v) * bottomTemperature;
+        cumulativeEnergyInput[i] += 0.5f * (dot(vHot, vHot) - dot(v, v));
+        globalState[i].z = vHot.x;
+        globalState[i].w = vHot.y;
     }
-    if(state.y > 1.0f - particleRadius) // top
+    if(globalState[i].y >= 1.0f - particleRadius) // top
     {
-        //state.y = 1.0f - particleRadius;
-        state.w *= -1;
+        //globalState[i].y = 1.0f - particleRadius;
+        globalState[i].w *= -1.0f;
     }
-
-    globalState[index] = state;
 }
 
 __kernel void collide(
-    __global float4 *globalState, // input-output
+    __global float4 *globalStateIn, // input
+    __global float4 *globalStateOut, // output
+    __global float *cumulativeDissipation, // input-output
     const unsigned int numParticles,
-    float particleRadius,
-    float restitutionCoefficient)
+    const float particleRadius,
+    const float restitutionCoefficient)
 {
     const uint i = get_global_id(0);
-    if(i >= numParticles)
+    if (i >= numParticles)
         return;
     for (int j = 0; j < numParticles; j++)
     {
-        if (i >= j) continue;
+        if (i == j) continue;
+        //if (i >= j) continue;
 
         // Calculate distance
-        float4 rel = globalState[j] - globalState[i];
+        float4 rel = globalStateIn[j] - globalStateOut[i];
+        //float4 rel = globalStateOut[j] - globalStateOut[i];
+
         float2 r = (float2)(rel.x, rel.y);
         float dist = length(r);
-        if (dist <= 2.0 * particleRadius) // Collision
+
+        if (dist <= 2.0f * particleRadius)
         {
             float2 n = (float2)(r.x / dist, r.y / dist);
-            float2 d = 0.5f * (1.0f + restitutionCoefficient) * dot(n, (float2)(rel.z, rel.w)) * n;
-            globalState[i].z += d.x;
-            globalState[i].w += d.y;
-            globalState[j].z -= d.x;
-            globalState[j].w -= d.y;
+            float relvdotn = dot(n, (float2)(rel.z, rel.w));
+            if (relvdotn > 0.0f)
+                // Particles are moving away from each other, don't correct
+                return;
+            float2 d = 0.5f * (1.0f + restitutionCoefficient) * relvdotn * n;
+
+            float2 vi = (float2)(globalStateOut[i].z, globalStateOut[i].w);
+            float2 vinew = vi + d;
+            cumulativeDissipation[i] += 0.5f * (dot(vi, vi) - dot(vinew, vinew));
+
+            globalStateOut[i].z += d.x;
+            globalStateOut[i].w += d.y;
+            //globalStateOut[j].z -= d.x;
+            //globalStateOut[j].w -= d.y;
         }
     }
 }
