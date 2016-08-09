@@ -17,7 +17,6 @@
 #define MAX_SOURCE_SIZE (0x100000)
 
 // TODO: Support multiple GPUs
-// Note: Velocities need to be big enough so we avoid having rounding errors leading to 0s.
 
 void writeCsvLine(FILE* fp, float* array, const uint length) {
     for (int i=0; i < length; i++) {
@@ -50,7 +49,7 @@ int main(int argc, char** argv)
     
     float t = 0.0f;
     float data[maxParticles * 4];              // original data set given to device
-    float collisions[maxParticles];
+    float dissipation[maxParticles];
     float energyInput[maxParticles];
     
     // Load Kernel
@@ -78,15 +77,15 @@ int main(int argc, char** argv)
     
     cl_mem input;                       // device memory used for the input array
     cl_mem output;
-    cl_mem collisions_input;
-    cl_mem energy_input;
+    cl_mem dissipation_mem;
+    cl_mem energy_mem;
     
     size_t global_work_size;            // global domain size for our calculation
     size_t local_work_size;             // local domain size for our calculation
     
     int err;                            // error code returned from api calls
     
-    collisions[0] = 0.0f;
+    dissipation[0] = 0.0f;
     for (int i=0; i < maxParticles; i++)
         energyInput[i] = 0.0f;
     
@@ -205,8 +204,8 @@ int main(int argc, char** argv)
     //
     input  = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * 4 * maxParticles, NULL, NULL);
     output  = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * 4 * maxParticles, NULL, NULL);
-    collisions_input = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
-    energy_input = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
+    dissipation_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
+    energy_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxParticles, NULL, NULL);
     if (!input) {
         printf("Error: Failed to allocate device memory!\n");
         exit(1);
@@ -216,7 +215,7 @@ int main(int argc, char** argv)
     //
     err = 0;
     err  = clSetKernelArg(kernel_integrate, 0, sizeof(cl_mem), &input);
-    err |= clSetKernelArg(kernel_integrate, 1, sizeof(cl_mem), &energy_input);
+    err |= clSetKernelArg(kernel_integrate, 1, sizeof(cl_mem), &energy_mem);
     err |= clSetKernelArg(kernel_integrate, 2, sizeof(unsigned int), &numParticles);
     err |= clSetKernelArg(kernel_integrate, 3, sizeof(float), &dt);
     err |= clSetKernelArg(kernel_integrate, 4, sizeof(float), &gravity);
@@ -231,7 +230,7 @@ int main(int argc, char** argv)
     err = 0;
     err  = clSetKernelArg(kernel_collide, 0, sizeof(cl_mem), &input);
     err |= clSetKernelArg(kernel_collide, 1, sizeof(cl_mem), &output);
-    err |= clSetKernelArg(kernel_collide, 2, sizeof(cl_mem), &collisions_input);
+    err |= clSetKernelArg(kernel_collide, 2, sizeof(cl_mem), &dissipation_mem);
     err |= clSetKernelArg(kernel_collide, 3, sizeof(unsigned int), &numParticles);
     err |= clSetKernelArg(kernel_collide, 4, sizeof(float), &particleRadius);
     err |= clSetKernelArg(kernel_collide, 5, sizeof(float), &restitutionCoefficient);
@@ -245,8 +244,8 @@ int main(int argc, char** argv)
     //
     err  = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
     err |= clEnqueueWriteBuffer(commands, output, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
-    err |= clEnqueueWriteBuffer(commands, collisions_input, CL_TRUE, 0, sizeof(float) * maxParticles, collisions, 0, NULL, NULL);
-    err |= clEnqueueWriteBuffer(commands, energy_input, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(commands, dissipation_mem, CL_TRUE, 0, sizeof(float) * maxParticles, dissipation, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(commands, energy_mem, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to write to source array!\n");
@@ -263,9 +262,9 @@ int main(int argc, char** argv)
     }
     global_work_size = maxParticles;
     
-    FILE* fp_collisions = fopen("/Users/olc/dev/boiling/opencl/collisions.csv", "w");
-    if (!fp_collisions) {
-        printf("Error: Failed to find collisions.csv!\n");
+    FILE* fp_dissipation = fopen("/Users/olc/dev/boiling/opencl/dissipation.csv", "w");
+    if (!fp_dissipation) {
+        printf("Error: Failed to find dissipation.csv!\n");
         return EXIT_FAILURE;
     }
     
@@ -273,7 +272,7 @@ int main(int argc, char** argv)
     if (!resume)
     {
         writeCsvLine(fp, data, numParticles * 4);
-        fprintf(fp_collisions, "%f;%f\n", 0.0f, 0.0f);
+        fprintf(fp_dissipation, "%f;%f\n", 0.0f, 0.0f);
     }
     
     
@@ -311,8 +310,8 @@ int main(int argc, char** argv)
             //
             clFinish(commands);
             err  = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(float) * 4 * maxParticles, data, 0, NULL, NULL);
-            err |= clEnqueueReadBuffer(commands, collisions_input, CL_TRUE, 0, sizeof(float) * maxParticles, collisions, 0, NULL, NULL);
-            err |= clEnqueueReadBuffer(commands, energy_input, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
+            err |= clEnqueueReadBuffer(commands, dissipation_mem, CL_TRUE, 0, sizeof(float) * maxParticles, dissipation, 0, NULL, NULL);
+            err |= clEnqueueReadBuffer(commands, energy_mem, CL_TRUE, 0, sizeof(float) * maxParticles, energyInput, 0, NULL, NULL);
             if (err != CL_SUCCESS)
             {
                 printf("Error: Failed to read output array! %d\n", err);
@@ -326,14 +325,14 @@ int main(int argc, char** argv)
             for (int i = 0; i < numParticles; i++)
             {
                 totalEnergyInput += energyInput[i];
-                totalDissipation += collisions[i];
+                totalDissipation += dissipation[i];
             }
-            fprintf(fp_collisions, "%f;%f\n", totalDissipation, totalEnergyInput);
+            fprintf(fp_dissipation, "%f;%f\n", totalDissipation, totalEnergyInput);
         }
     }
     
     fclose(fp);
-    fclose(fp_collisions);
+    fclose(fp_dissipation);
     
     // Shutdown and cleanup
     //

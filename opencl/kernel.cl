@@ -62,12 +62,10 @@ __kernel void collide(
     for (int j = 0; j < numParticles; j++)
     {
         if (i == j) continue;
-        //if (i >= j) continue;
 
         // Calculate distance
         float4 rel = globalStateIn[j] - globalStateOut[i];
-        //float4 rel = globalStateOut[j] - globalStateOut[i];
-
+        
         float2 r = (float2)(rel.x, rel.y);
         float dist = length(r);
 
@@ -86,8 +84,6 @@ __kernel void collide(
 
             globalStateOut[i].z += d.x;
             globalStateOut[i].w += d.y;
-            //globalStateOut[j].z -= d.x;
-            //globalStateOut[j].w -= d.y;
         }
     }
 }
