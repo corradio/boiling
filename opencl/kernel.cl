@@ -1,11 +1,13 @@
 __kernel void integrate(
     __global float4 *globalState, // input-output,
     __global float *cumulativeEnergyInput, // input-output
+    __global float *cumulativeDissipation, // input-output
     const unsigned int numParticles,
     float dt,
     const float gravity,
     const float particleRadius,
-    const float bottomTemperature)
+    const float bottomTemperature,
+    const float topTemperature)
 {
     const uint i = get_global_id(0);
     if (i >= numParticles)
@@ -18,18 +20,17 @@ __kernel void integrate(
     globalState[i].w += gravity * dt;
 
     // Boundary conditions
-    if(globalState[i].x <= -1.0f + particleRadius) // left
+    if (globalState[i].x <= -1.0f + particleRadius) // left
     {
         //globalState[i].x = -1.0f + particleRadius;
         globalState[i].z *= -1.0f;
     }
-    if(globalState[i].x >= 1.0f - particleRadius) // right
+    else if (globalState[i].x >= 1.0f - particleRadius) // right
     {
         //globalState[i].x = 1.0f - particleRadius;
         globalState[i].z *= -1.0f;
     }
-
-    if(globalState[i].y <= -1.0f + particleRadius) // bottom
+    else if (globalState[i].y <= -1.0f + particleRadius) // bottom
     {
         //globalState[i].y = -1.0f + particleRadius;
         globalState[i].w *= -1.0f;
@@ -37,14 +38,22 @@ __kernel void integrate(
         // TODO: Add randomness to direction and length
         float2 v = (float2)(globalState[i].z, globalState[i].w);
         float2 vHot = normalize(v) * bottomTemperature;
+        vHot.y +=  bottomTemperature/100.0f; // To avoid getting stuck at bottom
         cumulativeEnergyInput[i] += 0.5f * (dot(vHot, vHot) - dot(v, v));
         globalState[i].z = vHot.x;
         globalState[i].w = vHot.y;
     }
-    if(globalState[i].y >= 1.0f - particleRadius) // top
+    else if (globalState[i].y >= 1.0f - particleRadius) // top
     {
         //globalState[i].y = 1.0f - particleRadius;
         globalState[i].w *= -1.0f;
+
+        float2 v = (float2)(globalState[i].z, globalState[i].w);
+        float2 vCold = normalize(v) * topTemperature;
+        vCold.y -= topTemperature/100.0f; // To avoid getting stuck at top
+        cumulativeDissipation[i] += 0.5f * (dot(v, v) - dot(vCold, vCold));
+        globalState[i].z = vCold.x;
+        globalState[i].w = vCold.y;
     }
 }
 

@@ -41,11 +41,12 @@ int main(int argc, char** argv)
     
     float tEnd = 10.0f;
     float dt = 0.00001f;
-    float dtSampling = 0.01f;
+    float dtSampling = 0.001f;
     float gravity = -10.0f;
     float particleRadius = 0.01;
     float restitutionCoefficient = 0.99;
     float bottomTemperature = 15.0;
+    float topTemperature = 1.0;
     
     float t = 0.0f;
     float data[maxParticles * 4];              // original data set given to device
@@ -216,11 +217,13 @@ int main(int argc, char** argv)
     err = 0;
     err  = clSetKernelArg(kernel_integrate, 0, sizeof(cl_mem), &input);
     err |= clSetKernelArg(kernel_integrate, 1, sizeof(cl_mem), &energy_mem);
-    err |= clSetKernelArg(kernel_integrate, 2, sizeof(unsigned int), &numParticles);
-    err |= clSetKernelArg(kernel_integrate, 3, sizeof(float), &dt);
-    err |= clSetKernelArg(kernel_integrate, 4, sizeof(float), &gravity);
-    err |= clSetKernelArg(kernel_integrate, 5, sizeof(float), &particleRadius);
-    err |= clSetKernelArg(kernel_integrate, 6, sizeof(float), &bottomTemperature);
+    err |= clSetKernelArg(kernel_integrate, 2, sizeof(cl_mem), &dissipation_mem);
+    err |= clSetKernelArg(kernel_integrate, 3, sizeof(unsigned int), &numParticles);
+    err |= clSetKernelArg(kernel_integrate, 4, sizeof(float), &dt);
+    err |= clSetKernelArg(kernel_integrate, 5, sizeof(float), &gravity);
+    err |= clSetKernelArg(kernel_integrate, 6, sizeof(float), &particleRadius);
+    err |= clSetKernelArg(kernel_integrate, 7, sizeof(float), &bottomTemperature);
+    err |= clSetKernelArg(kernel_integrate, 8, sizeof(float), &topTemperature);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to set kernel arguments! %d\n", err);
