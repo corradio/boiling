@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -39,13 +41,13 @@ int main(int argc, char** argv)
     unsigned int maxParticles = 2048; // must be a nice power of 2
     unsigned int numParticles = 2048;
     
-    float tEnd = 10.0f;
-    float dt = 0.00001f;
+    float tEnd = 1.0f;
+    float dt = 0.001f; // 0.00001;
     float dtSampling = 0.001f;
     float gravity = -10.0f;
     float particleRadius = 0.01;
     float restitutionCoefficient = 0.99;
-    float bottomTemperature = 15.0;
+    float bottomTemperature = 5.0;
     float topTemperature = 1.0;
     
     float t = 0.0f;
@@ -53,8 +55,8 @@ int main(int argc, char** argv)
     float dissipation[maxParticles];
     float energyInput[maxParticles];
     
-    // Load Kernel
     FILE *fp;
+    FILE* fp_dissipation;
     const char kernelpath[] = "./kernel.cl";
     size_t kernel_source_size;
     char *kernel_source_str;
@@ -114,6 +116,31 @@ int main(int argc, char** argv)
             printf("Error: Did not read any input to resume from!\n");
             return EXIT_FAILURE;
         }
+        
+        // Same for collisions
+        fp_dissipation = fopen("/Users/olc/dev/boiling/opencl/dissipation.csv", "a");
+        /*fp_dissipation = fopen("/Users/olc/dev/boiling/opencl/dissipation.csv", "r+");
+        if (!fp_dissipation) {
+            printf("Error: Failed to find dissipation.csv!\n");
+            return EXIT_FAILURE;
+        }
+        while (fgets(line, MAX_SOURCE_SIZE, fp_dissipation)) {}
+        // Parse
+        i = 0;
+        for (tok = strtok(line, ";");
+             tok && *tok;
+             tok = strtok(NULL, ";\n"))
+        {
+            if (i == 0)
+                dissipation[i] = atof(tok);
+            else if (i == 1)
+                energyInput[i] = atof(tok);
+            i++;
+        }
+        if (!i) {
+            printf("Error: Did not read any input to resume from!\n");
+            return EXIT_FAILURE;
+        }*/
     }
     else
     {
@@ -134,21 +161,40 @@ int main(int argc, char** argv)
         
         // Prepare output pipe
         fp = fopen("/Users/olc/dev/boiling/opencl/output.csv", "w");
-        if (!fp) {
-            printf("Error: Failed to create output!\n");
+        fp_dissipation = fopen("/Users/olc/dev/boiling/opencl/dissipation.csv", "w");
+        if (!fp || !fp_dissipation) {
+            printf("Error: Failed to create output.csv or dissipation.csv!\n");
             return EXIT_FAILURE;
         }
     }
     
     // Connect to a compute device
     //
-    int gpu = 1;
+    int gpu = 0;
     err = clGetDeviceIDs(NULL, gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU, 1, &device_id, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to create a device group!\n");
         return EXIT_FAILURE;
     }
+    
+    // Get device info
+    //
+    unsigned long retSize;
+    err = clGetDeviceInfo(device_id, CL_DEVICE_EXTENSIONS, 0, NULL, &retSize);
+    if (err != CL_SUCCESS)
+    {
+        printf("Error: Failed to get device info!\n");
+        return EXIT_FAILURE;
+    }
+    char extensions[retSize];
+    err = clGetDeviceInfo(device_id, CL_DEVICE_EXTENSIONS, retSize, extensions, &retSize);
+    if (err != CL_SUCCESS)
+    {
+        printf("Error: Failed to get device info!\n");
+        return EXIT_FAILURE;
+    }
+    printf("CL_DEVICE_EXTENSIONS: %s\n", extensions);
     
     // Create a compute context
     //
@@ -264,12 +310,6 @@ int main(int argc, char** argv)
         exit(1);
     }
     global_work_size = maxParticles;
-    
-    FILE* fp_dissipation = fopen("/Users/olc/dev/boiling/opencl/dissipation.csv", "w");
-    if (!fp_dissipation) {
-        printf("Error: Failed to find dissipation.csv!\n");
-        return EXIT_FAILURE;
-    }
     
     // Write initial state
     if (!resume)

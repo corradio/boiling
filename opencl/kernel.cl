@@ -13,40 +13,43 @@ __kernel void integrate(
     if (i >= numParticles)
         return;
 
-    // Idea: Vectorise (if it speeds up?)
+    /*
+    // Euler integration
     globalState[i].x += globalState[i].z * dt; // z is vx
     globalState[i].y += globalState[i].w * dt + 0.5f * gravity * dt * dt; // w is vy
-    // globalState[i].z = globalState[i].z;
-    globalState[i].w += gravity * dt;
+    globalState[i].w += gravity * dt; // only acceleration in y
+    */
+
+    // Symplectic Euler
+    globalState[i].w += gravity * dt; // only acceleration in y
+    globalState[i].x += globalState[i].z * dt;
+    globalState[i].y += globalState[i].w * dt;
 
     // Boundary conditions
     if (globalState[i].x <= -1.0f + particleRadius) // left
     {
-        //globalState[i].x = -1.0f + particleRadius;
-        globalState[i].z *= -1.0f;
+        globalState[i].z *= -1;
     }
     else if (globalState[i].x >= 1.0f - particleRadius) // right
     {
-        //globalState[i].x = 1.0f - particleRadius;
-        globalState[i].z *= -1.0f;
+        globalState[i].z *= -1;
     }
     else if (globalState[i].y <= -1.0f + particleRadius) // bottom
     {
-        //globalState[i].y = -1.0f + particleRadius;
-        globalState[i].w *= -1.0f;
+        globalState[i].w *= -1;
 
         // TODO: Add randomness to direction and length
         float2 v = (float2)(globalState[i].z, globalState[i].w);
         float2 vHot = normalize(v) * bottomTemperature;
         vHot.y +=  bottomTemperature/100.0f; // To avoid getting stuck at bottom
-        cumulativeEnergyInput[i] += 0.5f * (dot(vHot, vHot) - dot(v, v));
+        float delta = 0.5f * (dot(vHot, vHot) - dot(v, v));
+        cumulativeEnergyInput[i] += delta;
         globalState[i].z = vHot.x;
         globalState[i].w = vHot.y;
     }
     else if (globalState[i].y >= 1.0f - particleRadius) // top
     {
-        //globalState[i].y = 1.0f - particleRadius;
-        globalState[i].w *= -1.0f;
+        globalState[i].w *= -1;
 
         float2 v = (float2)(globalState[i].z, globalState[i].w);
         float2 vCold = normalize(v) * topTemperature;
