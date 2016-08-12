@@ -1,3 +1,5 @@
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+
 __kernel void integrate(
     __global float4 *globalState, // input-output,
     __global float *cumulativeEnergyInput, // input-output

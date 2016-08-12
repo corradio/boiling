@@ -8,8 +8,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
-
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -170,7 +168,7 @@ int main(int argc, char** argv)
     
     // Connect to a compute device
     //
-    int gpu = 0;
+    int gpu = 1;
     err = clGetDeviceIDs(NULL, gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU, 1, &device_id, NULL);
     if (err != CL_SUCCESS)
     {
