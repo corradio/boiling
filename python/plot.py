@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -30,7 +31,7 @@ def compute_aggregated_velocity_field(state, N=20):
     return np.array(M)
 
 def load_csv(path):
-    data = np.loadtxt(path, delimiter=';')
+    data = np.array(pd.read_csv(path, delimiter=';', header=None))
     return data.reshape(data.shape[0], data.shape[1] / 4, 4)
 
 def plot_simulation(r, interval=1, quiver=False):

@@ -2,8 +2,8 @@
 
 __kernel void integrate(
     __global double *globalState, // input-output,
-    __global double *cumulativeEnergyInput, // input-output
-    __global double *cumulativeDissipation, // input-output
+    __global double *energyFluxLower, // input-output
+    __global double *energyFluxUpper, // input-output
     const unsigned int numParticles,
     const double dt,
     const double gravity,
@@ -37,12 +37,14 @@ __kernel void integrate(
         double v_sq_norm = globalState[index + 2] * globalState[index + 2] + globalState[index + 3] * globalState[index + 3];
         double v_inorm = rsqrt((float)v_sq_norm);
 
+        // Change length of vector by setting it to `bottomTemperature`
         double vHotX = globalState[index + 2] * v_inorm * bottomTemperature;
         double vHotY = globalState[index + 3] * v_inorm * bottomTemperature;
         globalState[index + 2] = vHotX;
         globalState[index + 3] = vHotY;
 
-        cumulativeEnergyInput[i] += 0.5 * (vHotX * vHotX + vHotY * vHotY - v_sq_norm);
+        // Positive = energy gained by the surroundings
+        energyFluxLower[i] = 0.5 * (vHotX * vHotX + vHotY * vHotY - v_sq_norm);
     }
     else if (globalState[index + 1] >= 1.0 - particleRadius && globalState[index + 3] >= 0.0) // top
     {
@@ -51,18 +53,20 @@ __kernel void integrate(
         double v_sq_norm = globalState[index + 2] * globalState[index + 2] + globalState[index + 3] * globalState[index + 3];
         double v_inorm = rsqrt((float)v_sq_norm);
 
+        // Change length of vector by setting it to `topTemperature`
         double vColdX = globalState[index + 2] * v_inorm * topTemperature;
         double vColdY = globalState[index + 3] * v_inorm * topTemperature;
         globalState[index + 2] = vColdX;
         globalState[index + 3] = vColdY;
 
-        cumulativeDissipation[i] += 0.5 * (v_sq_norm - vColdX * vColdX - vColdY * vColdY);
+        // Positive = energy gained by the surroundings
+        energyFluxUpper[i] = 0.5 * (vColdX * vColdX + vColdY * vColdY - v_sq_norm);
     }
 }
 
 __kernel void collide(
     __global double *globalState, // input-output
-    __global double *cumulativeDissipation, // input-output
+    __global double *dissipation, // input-output
     const unsigned int numParticles,
     const double particleRadius,
     const double restitutionCoefficient)
@@ -70,7 +74,7 @@ __kernel void collide(
     uint index_i, index_j;
     const double particleRadius_sq = particleRadius * particleRadius;
 
-    for (int i = 0; i < numParticles; i++) { 
+    for (int i = 0; i < numParticles; i++) {
         index_i = i * 4;
         for (int j = 0; j < numParticles; j++)
         {
@@ -88,9 +92,9 @@ __kernel void collide(
                 double nx = dx * inorm;
                 double ny = dy * inorm;
                 double relvdotn = nx * (globalState[index_j + 2] - globalState[index_i + 2]) + ny * (globalState[index_j + 3] - globalState[index_i + 3]);
-                if (relvdotn >= 0.0) // this condition requires correcting both particles at the same time
-                    // Particles are moving away from each other, don't correct
-                    return;
+                //if (relvdotn >= 0.0) // this condition requires correcting both particles at the same time
+                //    // Particles are moving away from each other, don't correct
+                //    return;
 
                 double Q = 0.5 * (1.0 + restitutionCoefficient) * relvdotn;
                 double colx = Q * nx;
@@ -101,12 +105,11 @@ __kernel void collide(
 
                 globalState[index_i + 2] += colx;
                 globalState[index_i + 3] += coly;
-                // ** Added
                 globalState[index_j + 2] -= colx;
                 globalState[index_j + 3] -= coly;
 
-                cumulativeDissipation[i] += 0.5 * (v_sq_norm_i - globalState[index_i + 2] * globalState[index_i + 2] - globalState[index_i + 3] * globalState[index_i + 3]);
-                cumulativeDissipation[j] += 0.5 * (v_sq_norm_j - globalState[index_j + 2] * globalState[index_j + 2] - globalState[index_j + 3] * globalState[index_j + 3]);
+                dissipation[i] = 0.5 * (v_sq_norm_i - globalState[index_i + 2] * globalState[index_i + 2] - globalState[index_i + 3] * globalState[index_i + 3]);
+                dissipation[j] = 0.5 * (v_sq_norm_j - globalState[index_j + 2] * globalState[index_j + 2] - globalState[index_j + 3] * globalState[index_j + 3]);
             }
         }
     }
