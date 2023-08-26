@@ -1,0 +1,9 @@
+.RData
+.RHistory
+.DS_Store
+.ipynb_checkpoints/
+DerivedData/
+build/
+*.pyc
+xcuserdata/
+xcshareddata/
